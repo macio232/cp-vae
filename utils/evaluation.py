@@ -100,7 +100,7 @@ def evaluate_vae(args, model, train_loader, data_loader, epoch, dir, mode):
         if args.prior == 'conditional' :
 
             # marginal categorical posterior
-            z_q_mean, z_q_logvar, z_q_discr = model.encoder(test_data)
+            z_q_mean, z_q_logvar, z_q_discr = model.encoder(full_data)
             q_c_x = F.softmax (z_q_discr, dim=-1)
             average_q_c_x = torch.mean( q_c_x, dim=0)
 
