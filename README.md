@@ -1,3 +1,5 @@
+# clone of https://bitbucket.org/dmmlgeneva/cp-vae/
+
 ## **Conditional Prior VAE (CP-VAE)**
 
 
