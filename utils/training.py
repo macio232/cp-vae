@@ -55,16 +55,16 @@ def train_vae(epoch, args, train_loader, model, optimizer):
         # optimization
         optimizer.step()
 
-        train_loss += loss.data[0]
-        train_re += -RE.data[0]
-        train_kl += KL.data[0]
+        train_loss += loss.item()
+        train_re += -RE.item()
+        train_kl += KL.item()
         if args.prior == 'MoG' or args.prior ==  'standard':
             train_kl_discr = 0.0
             train_kl_cont = 0.0
         else:
 
-            train_kl_cont += KL_cont.data[0]
-            train_kl_discr += KL_discr.data[0]
+            train_kl_cont += KL_cont.item()
+            train_kl_discr += KL_discr.item()
 
     # calculate final loss
     train_loss /= len(train_loader)  # loss function already averages over batch size

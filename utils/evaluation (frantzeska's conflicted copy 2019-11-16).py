@@ -37,16 +37,16 @@ def evaluate_vae(args, model, train_loader, data_loader, epoch, dir, mode):
         # calculate loss function
         loss, RE, KL, KL_cont, KL_discr = model.calculate_loss(x, average=True)
 
-        evaluate_loss += loss.data[0]
-        evaluate_re += -RE.data[0]
-        evaluate_kl += KL.data[0]
+        evaluate_loss += loss.item()
+        evaluate_re += -RE.item()
+        evaluate_kl += KL.item()
         if args.prior == 'MoG' or args.prior == 'standard':
             evaluate_kl_discr = 0.0
             evaluate_kl_cont = 0.0
         else:
 
-            evaluate_kl_cont += KL_cont.data[0]
-            evaluate_kl_discr += KL_discr.data[0]
+            evaluate_kl_cont += KL_cont.item()
+            evaluate_kl_discr += KL_discr.item()
 
 
 
