@@ -377,7 +377,7 @@ class VAE(Model):
 
         samples[np.arange(1), np.random.randint(0, self.args.disc_size, 1)] = 1.
 
-        if marginal = True:
+        if marginal == True:
             loc = dis.Categorical (average_q_c_x).sample ()
             samples[np.arange(1), loc] = 1.
 
