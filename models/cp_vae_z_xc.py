@@ -317,11 +317,11 @@ class VAE(Model):
 
             loss, RE, KL, KL_cont, KL_discr = self.calculate_loss(x, average=True)
 
-            RE_all += RE.cpu().data[0]
-            KL_all += KL.cpu().data[0]
-            KL_cont_all += KL_cont.cpu().data[0]
-            KL_discr_all += KL_discr.cpu ().data[0]
-            lower_bound += loss.cpu().data[0]
+            RE_all += RE.cpu().item()
+            KL_all += KL.cpu().item()
+            KL_cont_all += KL_cont.cpu().item()
+            KL_discr_all += KL_discr.cpu ().item()
+            lower_bound += loss.cpu().item()
 
         lower_bound /= I
 
