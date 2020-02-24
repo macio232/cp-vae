@@ -29,6 +29,7 @@ class VAE(Model):
         super(VAE, self).__init__(args)
 
         self.latent_size = self.args.z1_size + self.args.disc_size
+        self.gumbel_hard = self.args.gumbel_hard
 
         # encoder: q(z, c | x)
         self.encoder_layers = nn.Sequential(
@@ -120,7 +121,7 @@ class VAE(Model):
 
         z_q_mean, z_q_logvar, z_q_discr = self.encoder(x)
         z_q_cont_r = self.reparameterize (z_q_mean, z_q_logvar)
-        z_q_discr_r = self.reparameterize_discrete (z_q_discr)
+        z_q_discr_r = self.reparameterize_discrete (z_q_discr, hard=self.gumbel_hard)
         z_q = torch.cat([z_q_cont_r, z_q_discr_r], 1)
 
         x_mean, x_logvar = self.decoder(z_q)
@@ -346,7 +347,7 @@ class VAE(Model):
 
         z_q_discr_r = self.reparameterize_discrete_reconstracrion (z_q_discr)
         if self.args.no_recon_oneHot:
-            z_q_discr_r = self.reparameterize_discrete (z_q_discr)
+            z_q_discr_r = self.reparameterize_discrete (z_q_discr, hard=False)
 
         z_q = torch.cat([z_q_cont_r, z_q_discr_r], 1)
 
