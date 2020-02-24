@@ -78,7 +78,7 @@ parser.add_argument('--hidden_size', type=int, default= 300, metavar='D',
 parser.add_argument('--activation', type=str, default=None, metavar='ACT',
                     help='activation function')
 
-parser.add_argument('--gumbel_hard', action='store_true', default=True,
+parser.add_argument('--gumbel_hard', action='store_true', default=False,
                     help='Use if sample class instead of soft-max')
 
 
