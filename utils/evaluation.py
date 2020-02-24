@@ -188,7 +188,7 @@ def evaluate_vae(args, model, train_loader, data_loader, epoch, dir, mode):
 
 
             elif args.prior == 'conditional':
-                z_mean_recon, z_logvar_recon, z_q_discr = model.encoder(test_data)
+                z_mean_recon, z_logvar_recon, z_q_discr, z_q_discr = model.encoder(test_data)
                 vis_data = TSNE(n_components=2).fit_transform(z_mean_recon.data.cpu().numpy().astype('float64'))
                 vis_x = vis_data[:, 0]
                 vis_y = vis_data[:, 1]
