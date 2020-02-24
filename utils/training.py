@@ -19,13 +19,12 @@ def train_vae(epoch, args, train_loader, model, optimizer):
 
     # start training
 
-    # temp = args.temp
     anneal_rate = args.anneal_rate
-    temp_min = args.temp_min
+    gumble_tau_min = args.gumbel_tau_min
     anneal_interval = args.anneal_interval
 
     if epoch % anneal_interval == 0:
-        args.temp = np.maximum(args.temp * np.exp(-anneal_rate * epoch), temp_min)
+        args.gumbel_tau = np.maximum(args.gumbel_tau * np.exp(-anneal_rate * epoch), gumble_tau_min)
 
     if args.warmup == 0:
         beta = args.beta
@@ -34,7 +33,7 @@ def train_vae(epoch, args, train_loader, model, optimizer):
         if beta > 1.:
             beta = 1.
     print('beta: {}'.format(beta))
-    print('temp: {}'.format(args.temp))
+    print('temp: {}'.format(args.gumbel_tau))
 
     for batch_idx, (data, target) in enumerate(train_loader):
         if args.cuda:

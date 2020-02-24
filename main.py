@@ -43,16 +43,18 @@ parser.add_argument('--beta', type=float, default= 1.0,
 
 # Gumbel-Softmax parametes
 
-parser.add_argument('--temp', type=float, default=1.0, metavar='TEMP',
-                    help='Gumbel-Softmax initial temperature (default: 1.0)')
-
-parser.add_argument('--temp_min', type=float, default=0.5, metavar='TEMP_MIN',
-                    help='minimum Gumbel-Softmax temperature (default: 0.5)')
+parser.add_argument('--gumbel_tau', type=float, default=1.0, metavar='TAU',
+                    help='Gumbel-Softmax temperature (default: 1.0)')
+parser.add_argument('--gumbel_tau_min', type=float, default=0.5, metavar='TAU_MIN',
+                    help='Gumbel-Softmax temperature (default: 0.5)')
 
 parser.add_argument('--anneal_rate', type=float, default=0.00003, metavar='ANR',
                     help='annealing rate for Gumbel-Softmax (default: 0.00003)')
 parser.add_argument('--anneal_interval', type=float, default=1, metavar='ANIN',
                     help='annealing interval for Gumbel-Softmax  (default: 100)')
+
+parser.add_argument('--gumbel_hard', action='store_true', default=False,
+                    help='Use if sample class instead of soft-max')
 
 
 # cuda
@@ -114,7 +116,7 @@ parser.add_argument('--gaussian_var2', type=float, default=0.1, metavar='GV2',
 parser.add_argument('--dynamic_binarization', action='store_true', default=False,
                     help='allow dynamic binarization')
 
-# reconstruction
+# reconstruction'
 parser.add_argument('--no_recon_oneHot', action='store_true', default=False,
                     help='enables to pick the most likely sample to reconstruct the input (in validation - test)')
 # so if you want to reconstruct the input using prob of each category write in the comment line: --no_recon_oneHot.
@@ -167,17 +169,17 @@ def run(args, kwargs):
 
     if args.fixed_var:
         model_name = args.dataset_name + '_' + args.model_name + '_' + args.prior + '_wu(' + str(args.warmup) + ')' + '_z1_' + str(args.z1_size) + '_c_' \
-                     + str(args.disc_size) +'_beta_'+ str(args.beta) + '_lr_' + str(args.lr)+ '_fixed_var_mean' + str(args.fixed_var_mean)
+                     + str(args.disc_size) +'_beta_'+ str(args.beta) + '_lr_' + str(args.lr)+ '_fixed_var_mean' + str(args.fixed_var_mean) + '_ghard_' + str(args.gumbel_hard)
 
     elif args.use_capacity:
         model_name = args.dataset_name + '_' + args.model_name + '_' + args.prior + '_wu(' + str(args.warmup) + ')' + '_z1_' + str(args.z1_size) + '_c_' + str(args.disc_size)\
                      + '_lr_' + str(args.lr) + '_gamma_' + str(args.gamma) + '_num_iter_' + str(args.num_iter) \
-                     + '_capacity_cont_' + str( args.max_capacity_cont) + '_capacity_discr_' + str(args.max_capacity_discr)
+                     + '_capacity_cont_' + str( args.max_capacity_cont) + '_capacity_discr_' + str(args.max_capacity_discr) + '_ghard_' + str(args.gumbel_hard)
 
 
     else:
         model_name = args.dataset_name + '_' + args.model_name + '_' + args.prior + '_wu(' + str(args.warmup) + ')' + '_z1_' + str(args.z1_size) + '_c_' \
-                     + str(args.disc_size) +'_beta_'+ str(args.beta) + '_lr_' + str(args.lr)
+                     + str(args.disc_size) +'_beta_'+ str(args.beta) + '_lr_' + str(args.lr) + '_ghard_' + str(args.gumbel_hard)
 
 
     # DIRECTORY FOR SAVING
