@@ -43,16 +43,18 @@ parser.add_argument('--beta', type=float, default= 1.0,
 
 # Gumbel-Softmax parametes
 
-parser.add_argument('--temp', type=float, default=1.0, metavar='TEMP',
-                    help='Gumbel-Softmax initial temperature (default: 1.0)')
-
-parser.add_argument('--temp_min', type=float, default=0.5, metavar='TEMP_MIN',
-                    help='minimum Gumbel-Softmax temperature (default: 0.5)')
+parser.add_argument('--gumbel_tau', type=float, default=1.0, metavar='TAU',
+                    help='Gumbel-Softmax temperature (default: 1.0)')
+parser.add_argument('--gumbel_tau_min', type=float, default=0.5, metavar='TAU_MIN',
+                    help='Gumbel-Softmax temperature (default: 0.5)')
 
 parser.add_argument('--anneal_rate', type=float, default=0.00003, metavar='ANR',
                     help='annealing rate for Gumbel-Softmax (default: 0.00003)')
 parser.add_argument('--anneal_interval', type=float, default=1, metavar='ANIN',
                     help='annealing interval for Gumbel-Softmax  (default: 100)')
+
+parser.add_argument('--gumbel_hard', action='store_true', default=False,
+                    help='Use if sample class instead of soft-max')
 
 
 # cuda
@@ -77,9 +79,6 @@ parser.add_argument('--hidden_size', type=int, default= 300, metavar='D',
 
 parser.add_argument('--activation', type=str, default=None, metavar='ACT',
                     help='activation function')
-
-parser.add_argument('--gumbel_hard', action='store_true', default=False,
-                    help='Use if sample class instead of soft-max')
 
 
 # model: model name, prior
@@ -118,7 +117,6 @@ parser.add_argument('--dynamic_binarization', action='store_true', default=False
                     help='allow dynamic binarization')
 
 # reconstruction'
-# TODO: Check if actually does anything
 parser.add_argument('--no_recon_oneHot', action='store_true', default=False,
                     help='enables to pick the most likely sample to reconstruct the input (in validation - test)')
 # so if you want to reconstruct the input using prob of each category write in the comment line: --no_recon_oneHot.

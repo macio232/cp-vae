@@ -30,7 +30,7 @@ class Model(nn.Module):
         eps = Variable(eps)
         return eps.mul(std).add_(mu)
 
-    def reparameterize_discrete(self, logits, hard=False):
+    def reparameterize_discrete(self, logits, hard=False, *args, **kwargs):
         """
         Samples from a gumbel-softmax distribution using the reparameterization
         trick.
@@ -40,7 +40,7 @@ class Model(nn.Module):
            prob and after take the log (or equivalently log_softmax)
         """
 
-        return F.gumbel_softmax(logits, hard=hard)
+        return F.gumbel_softmax(logits, hard=hard, *args, **kwargs)
 
     def reparameterize_discrete_reconstracrion(self, logits ):
         """
