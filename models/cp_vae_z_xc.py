@@ -6,7 +6,6 @@ import math
 
 from scipy.misc import logsumexp
 
-
 import torch
 import torch.utils.data
 import torch.nn as nn
@@ -15,15 +14,17 @@ from torch.autograd import Variable
 from torch.nn import functional as F
 import torch.distributions as dis
 
-
-from utils.distributions import log_Bernoulli, log_Normal_diag, log_Normal_standard, log_Logistic_256
+from utils.distributions import log_Bernoulli, log_Normal_diag, \
+    log_Normal_standard, log_Logistic_256
 from utils.visualization import plot_histogram
 from utils.nn import he_init, GatedDense, NonLinear, CReLU
 
 from models.Model import Model
+
+
 # -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-#=======================================================================================================================
+# =======================================================================================================================
 class VAE(Model):
     def __init__(self, args):
         super(VAE, self).__init__(args)
@@ -33,6 +34,8 @@ class VAE(Model):
             if self.klass_2_decoder else self.args.z1_size
         self.gumbel_hard = self.args.gumbel_hard
         self.gumbel_tau = self.args.gumbel_tau
+
+        self.multi_decoder = self.args.multi_decoder
 
         self.encoder_mean = dict()
         self.encoder_log_var = dict()
@@ -44,10 +47,15 @@ class VAE(Model):
 
         # encoder: q(z, c | x)
         for i in range(self.args.disc_size):
-            self.encoder_mean[i] = Linear(self.args.hidden_size, self.args.z1_size )
-            self.encoder_log_var[i] = NonLinear(self.args.hidden_size, self.args.z1_size, activation=nn.Hardtanh(min_val=-6.,max_val=2.))
+            self.encoder_mean[i] = Linear(self.args.hidden_size,
+                                          self.args.z1_size)
+            self.encoder_log_var[i] = NonLinear(self.args.hidden_size,
+                                                self.args.z1_size,
+                                                activation=nn.Hardtanh(
+                                                    min_val=-6., max_val=2.))
         # self.encoder_discr = Linear(self.args.hidden_size, self.args.disc_size)
-        self.encoder_discr = NonLinear(self.args.hidden_size, self.args.disc_size, activation = nn.ELU())
+        self.encoder_discr = NonLinear(self.args.hidden_size,
+                                       self.args.disc_size, activation=nn.ELU())
 
         # decoder: p(x | z, c)
         self.decoder_layers = nn.Sequential(
@@ -55,14 +63,41 @@ class VAE(Model):
             GatedDense(self.args.hidden_size, self.args.hidden_size)
         )
 
-
-
         if self.args.input_type == 'binary':
-            self.decoder_mean = NonLinear(self.args.hidden_size, np.prod(self.args.input_size), activation=nn.Sigmoid())
+            if self.multi_decoder:
+                self.decoder_mean = dict()
+                for i in range(self.args.disc_size):
+                    self.decoder_mean[i] = NonLinear(self.args.hidden_size,
+                                                     np.prod(
+                                                         self.args.input_size),
+                                                     activation=nn.Sigmoid())
+            else:
+                self.decoder_mean = NonLinear(self.args.hidden_size,
+                                              np.prod(self.args.input_size),
+                                              activation=nn.Sigmoid())
         elif self.args.input_type == 'gray' or self.args.input_type == 'continuous':
-            self.decoder_mean = NonLinear(self.args.hidden_size, np.prod(self.args.input_size), activation=nn.Sigmoid())
-            self.decoder_logvar = NonLinear(self.args.hidden_size, np.prod(self.args.input_size), activation=nn.Hardtanh(min_val=-4.5,max_val=0))
-
+            if self.multi_decoder:
+                self.decoder_mean = dict()
+                self.decoder_logvar = dict()
+                for i in range(self.args.disc_size):
+                    self.decoder_mean[i] = NonLinear(self.args.hidden_size,
+                                                     np.prod(
+                                                         self.args.input_size),
+                                                     activation=nn.Sigmoid())
+                    self.decoder_logvar[i] = NonLinear(self.args.hidden_size,
+                                                       np.prod(
+                                                           self.args.input_size),
+                                                       activation=nn.Hardtanh(
+                                                           min_val=-4.5,
+                                                           max_val=0))
+            else:
+                self.decoder_mean = NonLinear(self.args.hidden_size,
+                                              np.prod(self.args.input_size),
+                                              activation=nn.Sigmoid())
+                self.decoder_logvar = NonLinear(self.args.hidden_size,
+                                                np.prod(self.args.input_size),
+                                                activation=nn.Hardtanh(
+                                                    min_val=-4.5, max_val=0))
 
         self.relu = nn.ReLU()
         self.sigmoid = nn.Sigmoid()
@@ -75,19 +110,25 @@ class VAE(Model):
 
         ## initialize: mu, sigma parameters
         if self.args.prior == 'conditional':
-            self.prior_means = Variable (torch.rand([self.args.disc_size, self.args.z1_size]), requires_grad=True)  # K x D
+            self.prior_means = Variable(
+                torch.rand([self.args.disc_size, self.args.z1_size]),
+                requires_grad=True)  # K x D
 
             if self.args.fixed_var:
-                self.prior_vars = Variable(torch.ones([self.args.disc_size, self.args.z1_size]), requires_grad = False)  # K x D
+                self.prior_vars = Variable(
+                    torch.ones([self.args.disc_size, self.args.z1_size]),
+                    requires_grad=False)  # K x D
             else:
-                self.prior_vars = Variable(torch.rand(self.args.disc_size, self.args.z1_size), requires_grad = True)   # K x D
+                self.prior_vars = Variable(
+                    torch.rand(self.args.disc_size, self.args.z1_size),
+                    requires_grad=True)  # K x D
                 # self.prior_vars = torch.ones(self.args.disc_size, self.args.z1_size)  # K x D
 
             if self.args.cuda:
                 self.prior_means = self.prior_means.cuda()
                 self.prior_vars = self.prior_vars.cuda()
 
-         #   self.prior_vars = self.softplus(self.prior_vars)
+        #   self.prior_vars = self.softplus(self.prior_vars)
 
     # THE MODEL: VARIATIONAL POSTERIOR ENCODER
     def encoder(self, x):
@@ -100,7 +141,7 @@ class VAE(Model):
         )
         klasss = torch.max(z_q_discr_r, dim=1)[1]
         z_q_mean = []
-        z_q_logvar= []
+        z_q_logvar = []
         for idx, klass in enumerate(klasss):
             z_q_mean.append(self.encoder_mean[klass.item()](x[idx, :]))
             z_q_logvar.append(self.encoder_log_var[klass.item()](x[idx, :]))
@@ -108,17 +149,32 @@ class VAE(Model):
         return torch.stack(z_q_mean), torch.stack(z_q_logvar), z_q_discr_r
 
     # THE MODEL: GENERATIVE DISTRIBUTION DECODER
-    def decoder(self, z):
+    def decoder(self, z_con, z_disc):
+        z = torch.cat([z_con, z_disc], 1) \
+            if self.klass_2_decoder else z_con
         z = self.decoder_layers(z)
 
-        x_mean = self.decoder_mean(z)
+        if self.multi_decoder:
+            klasss = torch.max(z_disc, dim=1)[1]
+            x_mean = []
+            for idx, klass in enumerate(klasss):
+                x_mean.append(self.decoder_mean[klass.item()](z[idx, :]))
+            x_mean = torch.stack(x_mean)
+        else:
+            x_mean = self.decoder_mean(z)
+
         if self.args.input_type == 'binary':
             x_logvar = 0.
         else:
-            x_mean = torch.clamp(x_mean, min=0.+1./512., max=1.-1./512.)
-            x_logvar = self.decoder_logvar(z)
+            x_mean = torch.clamp(x_mean, min=0. + 1. / 512., max=1. - 1. / 512.)
+            if self.multi_decoder:
+                x_logvar = []
+                for idx, klass in enumerate(klasss):
+                    x_logvar.append(self.decoder_logvar[klass.item()](z[idx, :]))
+                x_logvar = torch.stack(x_logvar)
+            else:
+                x_logvar = self.decoder_logvar(z)
         return x_mean, x_logvar
-
 
     # THE MODEL: FORWARD PASS
     def forward(self, x):
@@ -139,15 +195,14 @@ class VAE(Model):
         '''
 
         z_q_mean, z_q_logvar, z_q_discr_r = self.encoder(x)
-        z_q_cont_r = self.reparameterize (z_q_mean, z_q_logvar)
+        z_q_cont_r = self.reparameterize(z_q_mean, z_q_logvar)
         z_q = torch.cat([z_q_cont_r, z_q_discr_r], 1) \
             if self.klass_2_decoder else z_q_cont_r
-        x_mean, x_logvar = self.decoder(z_q)
+        x_mean, x_logvar = self.decoder(z_q_cont_r, z_q_discr_r)
 
         return x_mean, x_logvar, z_q, z_q_cont_r, z_q_discr_r, z_q_mean, z_q_logvar, z_q_discr_r
 
-
-    def calculate_loss(self, x, beta=1.,  average=False):
+    def calculate_loss(self, x, beta=1., average=False):
         '''
         :param x: input image(s)
         :param beta: a hyperparam for warmup
@@ -160,7 +215,8 @@ class VAE(Model):
         '''
 
         # pass through VAE
-        x_mean, x_logvar, z_q, z_q_cont_r, z_q_discr_r, z_q_mean, z_q_logvar, z_q_discr = self.forward(x)
+        x_mean, x_logvar, z_q, z_q_cont_r, z_q_discr_r, z_q_mean, z_q_logvar, z_q_discr = self.forward(
+            x)
 
         # RE / A term
         if self.args.input_type == 'binary':
@@ -171,14 +227,12 @@ class VAE(Model):
         else:
             raise Exception('Wrong input type!')
 
-
         #  B term
         #  KL for continuous latent variables
 
         if self.args.prior == 'conditional':
             KL_cont = 0.0
             disc_size = self.args.disc_size
-
 
             ''' 
                 compute KL_cont using the def KL_continuous function in Models.py (self.KL_continuous)
@@ -191,18 +245,22 @@ class VAE(Model):
 
             for i in range(disc_size):
                 # KL_cont += z_q_discr_r[:,i] * self.KL_continuous (z_q_mean, z_q_logvar, self.prior_means[i,:], self.prior_vars[i,:], dim=-1)
-                KL_cont += q_c_x[:, i] * self.KL_continuous(z_q_mean, z_q_logvar, self.prior_means[i, :],
-                                                           self.softplus(self.prior_vars[i, :]), dim=-1)
+                KL_cont += q_c_x[:, i] * self.KL_continuous(z_q_mean,
+                                                            z_q_logvar,
+                                                            self.prior_means[i,
+                                                            :],
+                                                            self.softplus(
+                                                                self.prior_vars[
+                                                                i, :]), dim=-1)
 
 
         else:
             raise ValueError('Wrong Prior Type')
 
-
         # C term
         #  KL for discrete latent variables
 
-        KL_discr = self.KL_discrete(z_q_discr,  dim=1)
+        KL_discr = self.KL_discrete(z_q_discr, dim=1)
 
         # total loss
         KL = KL_cont + KL_discr
@@ -217,8 +275,6 @@ class VAE(Model):
             KL_discr = torch.mean(KL_discr)
 
         return loss, RE, KL, KL_cont, KL_discr
-
-
 
     def calculate_likelihood(self, X, dir, mode='test', S=5000, MB=100):
         '''
@@ -250,41 +306,47 @@ class VAE(Model):
             x_single = X[j].unsqueeze(0)
 
             a = []
-            for r in range (0, int (R)):
+            for r in range(0, int(R)):
                 # Repeat it for all training points
-                x = x_single.expand (S, x_single.size (1))
-
+                x = x_single.expand(S, x_single.size(1))
 
                 for c in range(0, self.args.disc_size):
 
-                    x_mean, x_logvar, z_q, z_q_cont_r, z_q_discr_r, z_q_mean, z_q_logvar, z_q_discr = self.forward (x)
+                    x_mean, x_logvar, z_q, z_q_cont_r, z_q_discr_r, z_q_mean, z_q_logvar, z_q_discr = self.forward(
+                        x)
 
-                    samples = torch.zeros (1, self.args.disc_size)
+                    samples = torch.zeros(1, self.args.disc_size)
                     if self.args.cuda:
-                        samples = torch.cuda.FloatTensor (1, self.args.disc_size).fill_ (0)
+                        samples = torch.cuda.FloatTensor(1,
+                                                         self.args.disc_size).fill_(
+                            0)
 
-                    samples[np.arange (1), c] = 1.
+                    samples[np.arange(1), c] = 1.
 
-                    z_sample_rand_discr = Variable (samples)
+                    z_sample_rand_discr = Variable(samples)
                     if self.args.cuda:
-                        z_sample_rand_discr = z_sample_rand_discr.cuda ()
+                        z_sample_rand_discr = z_sample_rand_discr.cuda()
                     #
-                    gen_mean = z_sample_rand_discr.mm (self.prior_means)
-                    gen_logvar = z_sample_rand_discr.mm (self.prior_vars)
-                    log_p_z_c = log_Normal_diag (z_q_cont_r, gen_mean, gen_logvar, dim=1)
+                    gen_mean = z_sample_rand_discr.mm(self.prior_means)
+                    gen_logvar = z_sample_rand_discr.mm(self.prior_vars)
+                    log_p_z_c = log_Normal_diag(z_q_cont_r, gen_mean,
+                                                gen_logvar, dim=1)
 
-                    log_q_z_cont = log_Normal_diag (z_q_cont_r, z_q_mean, z_q_logvar, dim=1)
+                    log_q_z_cont = log_Normal_diag(z_q_cont_r, z_q_mean,
+                                                   z_q_logvar, dim=1)
 
                     KL = -(log_p_z_c - log_q_z_cont)
 
                     loos, RE, _, _, _ = self.calculate_loss(x)
                     total_KL = KL + torch.log(z_q_discr).view(100) - log_q_c_x
-                    log_q_c_x = torch.log(torch.Tensor(1).fill_(self.args.disc_size))
+                    log_q_c_x = torch.log(
+                        torch.Tensor(1).fill_(self.args.disc_size))
                     if self.args.cuda:
-                        log_q_c_x = torch.log (torch.cuda.FloatTensor (1).fill_ (self.args.disc_size))
-                    a_tmp = -RE + beta*total_KL
+                        log_q_c_x = torch.log(torch.cuda.FloatTensor(1).fill_(
+                            self.args.disc_size))
+                    a_tmp = -RE + beta * total_KL
 
-                    a.append( -a_tmp.cpu().data.numpy() )
+                    a.append(-a_tmp.cpu().data.numpy())
 
             # calculate max
             a = np.asarray(a)
@@ -293,7 +355,7 @@ class VAE(Model):
             # print(a.shape)
             a = np.reshape(a, (a.shape[0] * a.shape[1], 1))
             # logsumexp(): returns the log of the sum of exponentials of input elements.
-            likelihood_x = logsumexp( a )
+            likelihood_x = logsumexp(a)
             likelihood_test.append(likelihood_x - np.log(len(a)))
 
         likelihood_test = np.array(likelihood_test)
@@ -323,14 +385,16 @@ class VAE(Model):
         I = int(math.ceil(X_full.size(0) / MB))
 
         for i in range(I):
-            x = X_full[i * MB: (i + 1) * MB].view(-1, np.prod(self.args.input_size))
+            x = X_full[i * MB: (i + 1) * MB].view(-1,
+                                                  np.prod(self.args.input_size))
 
-            loss, RE, KL, KL_cont, KL_discr = self.calculate_loss(x, average=True)
+            loss, RE, KL, KL_cont, KL_discr = self.calculate_loss(x,
+                                                                  average=True)
 
             RE_all += RE.cpu().item()
             KL_all += KL.cpu().item()
             KL_cont_all += KL_cont.cpu().item()
-            KL_discr_all += KL_discr.cpu ().item()
+            KL_discr_all += KL_discr.cpu().item()
             lower_bound += loss.cpu().item()
 
         lower_bound /= I
@@ -339,7 +403,7 @@ class VAE(Model):
 
     def reconstruct_x(self, x):
         z_q_mean, z_q_logvar, z_q_discr_r = self.encoder(x)
-        z_q_cont_r = self.reparameterize (z_q_mean, z_q_logvar)
+        z_q_cont_r = self.reparameterize(z_q_mean, z_q_logvar)
 
         # z_q_discr_r = self.reparameterize_discrete(
         #     z_q_discr,
@@ -353,16 +417,16 @@ class VAE(Model):
         #         tau=self.gumbel_tau,
         #     )
 
-        z_q = torch.cat([z_q_cont_r, z_q_discr_r], 1) \
-            if self.klass_2_decoder else z_q_cont_r
+        # z_q = torch.cat([z_q_cont_r, z_q_discr_r], 1) \
+        #     if self.klass_2_decoder else z_q_cont_r
 
-        x_mean, _ = self.decoder(z_q)
+        x_mean, _ = self.decoder(z_q_cont_r, z_q_discr_r)
 
         return x_mean
 
     # ADDITIONAL METHODS
 
-    def generate_cont_x(self, average_q_c_x, marginal = False):
+    def generate_cont_x(self, average_q_c_x, marginal=False):
         '''
         :argument: marginal = False sample from the uniform categorical prior, otherwise from the marginal categorical posterior
         return: generations  (only 1 sample)
@@ -385,7 +449,7 @@ class VAE(Model):
         samples[np.arange(1), np.random.randint(0, self.args.disc_size, 1)] = 1.
 
         if marginal == True:
-            loc = dis.Categorical (average_q_c_x).sample ()
+            loc = dis.Categorical(average_q_c_x).sample()
             samples[np.arange(1), loc] = 1.
 
         z_sample_rand_discr = Variable(samples)
@@ -398,18 +462,21 @@ class VAE(Model):
 
         z_sample_rand_cont2 = []
         for i in range(self.args.z1_size):
-            z_sample_rand_cont1 = Variable (torch.FloatTensor (1, 1).normal_ (gen_mean[0,i].item(), gen_var[0,i].item()))
-            z_sample_rand_cont2.append(z_sample_rand_cont1) # -> list
-        z_sample_rand_cont = torch.cat(z_sample_rand_cont2, dim=1) #  list -> tensor
+            z_sample_rand_cont1 = Variable(
+                torch.FloatTensor(1, 1).normal_(gen_mean[0, i].item(),
+                                                gen_var[0, i].item()))
+            z_sample_rand_cont2.append(z_sample_rand_cont1)  # -> list
+        z_sample_rand_cont = torch.cat(z_sample_rand_cont2,
+                                       dim=1)  # list -> tensor
         if self.args.cuda:
             z_sample_rand_cont = z_sample_rand_cont.cuda()
 
-        z_sample_rand = torch.cat([z_sample_rand_cont, z_sample_rand_discr], 1) \
-            if self.klass_2_decoder else z_sample_rand_cont
-        samples_rand_mean, samples_rand_var = self.decoder(z_sample_rand)
+        # z_sample_rand = torch.cat([z_sample_rand_cont, z_sample_rand_discr], 1) \
+        #     if self.klass_2_decoder else z_sample_rand_cont
+        samples_rand_mean, samples_rand_var = self.decoder(z_sample_rand_cont,
+                                                           z_sample_rand_discr)
 
         return samples_rand_mean, samples_rand_var, self.prior_means, self.prior_vars
-
 
     def generate_specific_x_cat(self, category):
         '''
@@ -435,7 +502,7 @@ class VAE(Model):
             samples = torch.cuda.FloatTensor(1, self.args.disc_size).fill_(0)
         samples[np.arange(1), category] = 1.
 
-        z_sample_rand_discr =  Variable(samples)
+        z_sample_rand_discr = Variable(samples)
         if self.args.cuda:
             z_sample_rand_discr = z_sample_rand_discr.cuda()
         gen_mean = z_sample_rand_discr.mm(self.prior_means)
@@ -444,17 +511,18 @@ class VAE(Model):
 
         z_sample_rand_cont2 = []
         for i in range(self.args.z1_size):
-            z_sample_rand_cont1 = Variable (torch.FloatTensor (1, 1).normal_ (gen_mean[0,i].item(), gen_var[0,i].item()))
-            z_sample_rand_cont2.append(z_sample_rand_cont1) # -> list
-        z_sample_rand_cont = torch.cat(z_sample_rand_cont2, dim=1) #  list -> tensor
+            z_sample_rand_cont1 = Variable(
+                torch.FloatTensor(1, 1).normal_(gen_mean[0, i].item(),
+                                                gen_var[0, i].item()))
+            z_sample_rand_cont2.append(z_sample_rand_cont1)  # -> list
+        z_sample_rand_cont = torch.cat(z_sample_rand_cont2,
+                                       dim=1)  # list -> tensor
         if self.args.cuda:
             z_sample_rand_cont = z_sample_rand_cont.cuda()
 
         z_sample_rand = torch.cat([z_sample_rand_cont, z_sample_rand_discr], 1) \
             if self.klass_2_decoder else z_sample_rand_cont
 
-        samples_rand, _ = self.decoder(z_sample_rand)
+        samples_rand, _ = self.decoder(z_sample_rand_cont, z_sample_rand_discr)
 
         return samples_rand
-
-
