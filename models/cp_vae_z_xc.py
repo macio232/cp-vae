@@ -93,7 +93,7 @@ class VAE(Model):
         z_q_discr = self.encoder_discr(x)
         z_q_discr_r = self.reparameterize_discrete(
             z_q_discr,
-            hard=True,
+            hard=self.gumbel_hard,
             tau=self.gumbel_tau,
         )
         klasss = torch.max(z_q_discr_r, dim=1)[1]
@@ -103,7 +103,7 @@ class VAE(Model):
             z_q_mean.append(self.encoder_mean[klass.item()](x[idx, :]))
             z_q_logvar.append(self.encoder_log_var[klass.item()](x[idx, :]))
 
-        return torch.stack(z_q_mean), torch.stack(z_q_logvar), z_q_discr_r, z_q_discr
+        return torch.stack(z_q_mean), torch.stack(z_q_logvar), z_q_discr_r
 
     # THE MODEL: GENERATIVE DISTRIBUTION DECODER
     def decoder(self, z):
@@ -136,13 +136,13 @@ class VAE(Model):
 
         '''
 
-        z_q_mean, z_q_logvar, z_q_discr_r, z_q_discr = self.encoder(x)
+        z_q_mean, z_q_logvar, z_q_discr_r = self.encoder(x)
         z_q_cont_r = self.reparameterize (z_q_mean, z_q_logvar)
         # z_q = torch.cat([z_q_cont_r, z_q_discr_r], 1)
         z_q = z_q_cont_r
         x_mean, x_logvar = self.decoder(z_q)
 
-        return x_mean, x_logvar, z_q, z_q_cont_r, z_q_discr_r, z_q_mean, z_q_logvar, z_q_discr
+        return x_mean, x_logvar, z_q, z_q_cont_r, z_q_discr_r, z_q_mean, z_q_logvar, z_q_discr_r
 
 
     def calculate_loss(self, x, beta=1.,  average=False):
@@ -336,7 +336,7 @@ class VAE(Model):
         return lower_bound
 
     def reconstruct_x(self, x):
-        z_q_mean, z_q_logvar, z_q_discr_r, z_q_discr = self.encoder(x)
+        z_q_mean, z_q_logvar, z_q_discr_r = self.encoder(x)
         z_q_cont_r = self.reparameterize (z_q_mean, z_q_logvar)
 
         # z_q_discr_r = self.reparameterize_discrete(
