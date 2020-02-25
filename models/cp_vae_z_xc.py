@@ -28,7 +28,9 @@ class VAE(Model):
     def __init__(self, args):
         super(VAE, self).__init__(args)
 
-        self.latent_size = self.args.z1_size
+        self.klass_2_decoder = args.klass_2_decoder
+        self.latent_size = self.args.z1_size + self.args.disc_size \
+            if self.klass_2_decoder else self.args.z1_size
         self.gumbel_hard = self.args.gumbel_hard
         self.gumbel_tau = self.args.gumbel_tau
 
@@ -138,8 +140,8 @@ class VAE(Model):
 
         z_q_mean, z_q_logvar, z_q_discr_r = self.encoder(x)
         z_q_cont_r = self.reparameterize (z_q_mean, z_q_logvar)
-        # z_q = torch.cat([z_q_cont_r, z_q_discr_r], 1)
-        z_q = z_q_cont_r
+        z_q = torch.cat([z_q_cont_r, z_q_discr_r], 1) \
+            if self.klass_2_decoder else z_q_cont_r
         x_mean, x_logvar = self.decoder(z_q)
 
         return x_mean, x_logvar, z_q, z_q_cont_r, z_q_discr_r, z_q_mean, z_q_logvar, z_q_discr_r
@@ -351,8 +353,8 @@ class VAE(Model):
         #         tau=self.gumbel_tau,
         #     )
 
-        # z_q = torch.cat([z_q_cont_r, z_q_discr_r], 1)
-        z_q = z_q_cont_r
+        z_q = torch.cat([z_q_cont_r, z_q_discr_r], 1) \
+            if self.klass_2_decoder else z_q_cont_r
 
         x_mean, _ = self.decoder(z_q)
 
@@ -402,8 +404,8 @@ class VAE(Model):
         if self.args.cuda:
             z_sample_rand_cont = z_sample_rand_cont.cuda()
 
-        # z_sample_rand = torch.cat([z_sample_rand_cont, z_sample_rand_discr], 1)
-        z_sample_rand = z_sample_rand_cont
+        z_sample_rand = torch.cat([z_sample_rand_cont, z_sample_rand_discr], 1) \
+            if self.klass_2_decoder else z_sample_rand_cont
         samples_rand_mean, samples_rand_var = self.decoder(z_sample_rand)
 
         return samples_rand_mean, samples_rand_var, self.prior_means, self.prior_vars
@@ -448,8 +450,8 @@ class VAE(Model):
         if self.args.cuda:
             z_sample_rand_cont = z_sample_rand_cont.cuda()
 
-        # z_sample_rand = torch.cat([z_sample_rand_cont, z_sample_rand_discr], 1)
-        z_sample_rand = z_sample_rand_cont
+        z_sample_rand = torch.cat([z_sample_rand_cont, z_sample_rand_discr], 1) \
+            if self.klass_2_decoder else z_sample_rand_cont
 
         samples_rand, _ = self.decoder(z_sample_rand)
 
