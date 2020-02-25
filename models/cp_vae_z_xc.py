@@ -28,18 +28,22 @@ class VAE(Model):
     def __init__(self, args):
         super(VAE, self).__init__(args)
 
-        self.latent_size = self.args.z1_size + self.args.disc_size
+        self.latent_size = self.args.z1_size
         self.gumbel_hard = self.args.gumbel_hard
         self.gumbel_tau = self.args.gumbel_tau
 
-        # encoder: q(z, c | x)
+        self.encoder_mean = dict()
+        self.encoder_log_var = dict()
+
         self.encoder_layers = nn.Sequential(
             GatedDense(np.prod(self.args.input_size), self.args.hidden_size),
             GatedDense(self.args.hidden_size, self.args.hidden_size)
         )
-        
-        self.encoder_mean = Linear(self.args.hidden_size + self.args.disc_size, self.args.z1_size )
-        self.encoder_log_var = NonLinear(self.args.hidden_size + self.args.disc_size, self.args.z1_size, activation=nn.Hardtanh(min_val=-6.,max_val=2.))
+
+        # encoder: q(z, c | x)
+        for i in range(self.args.disc_size):
+            self.encoder_mean[i] = Linear(self.args.hidden_size, self.args.z1_size )
+            self.encoder_log_var[i] = NonLinear(self.args.hidden_size, self.args.z1_size, activation=nn.Hardtanh(min_val=-6.,max_val=2.))
         # self.encoder_discr = Linear(self.args.hidden_size, self.args.disc_size)
         self.encoder_discr = NonLinear(self.args.hidden_size, self.args.disc_size, activation = nn.ELU())
 
@@ -85,22 +89,21 @@ class VAE(Model):
 
     # THE MODEL: VARIATIONAL POSTERIOR ENCODER
     def encoder(self, x):
-
         x = self.encoder_layers(x)
-
         z_q_discr = self.encoder_discr(x)
         z_q_discr_r = self.reparameterize_discrete(
             z_q_discr,
             hard=self.gumbel_hard,
             tau=self.gumbel_tau,
         )
+        klasss = torch.max(z_q_discr_r, dim=1)[1]
+        z_q_mean = []
+        z_q_logvar= []
+        for idx, klass in enumerate(klasss):
+            z_q_mean.append(self.encoder_mean[klass.item()](x[idx, :]))
+            z_q_logvar.append(self.encoder_log_var[klass.item()](x[idx, :]))
 
-        x_cont = torch.cat([x, z_q_discr_r], 1)
-        z_q_mean = self.encoder_mean(x_cont)
-        z_q_logvar = self.encoder_log_var(x_cont)
-
-
-        return z_q_mean, z_q_logvar, z_q_discr
+        return torch.stack(z_q_mean), torch.stack(z_q_logvar), z_q_discr_r
 
     # THE MODEL: GENERATIVE DISTRIBUTION DECODER
     def decoder(self, z):
@@ -133,18 +136,13 @@ class VAE(Model):
 
         '''
 
-        z_q_mean, z_q_logvar, z_q_discr = self.encoder(x)
+        z_q_mean, z_q_logvar, z_q_discr_r = self.encoder(x)
         z_q_cont_r = self.reparameterize (z_q_mean, z_q_logvar)
-        z_q_discr_r = self.reparameterize_discrete(
-            z_q_discr,
-            hard=self.gumbel_hard,
-            tau=self.gumbel_tau,
-        )
-        z_q = torch.cat([z_q_cont_r, z_q_discr_r], 1)
-
+        # z_q = torch.cat([z_q_cont_r, z_q_discr_r], 1)
+        z_q = z_q_cont_r
         x_mean, x_logvar = self.decoder(z_q)
 
-        return x_mean, x_logvar, z_q, z_q_cont_r, z_q_discr_r, z_q_mean, z_q_logvar, z_q_discr
+        return x_mean, x_logvar, z_q, z_q_cont_r, z_q_discr_r, z_q_mean, z_q_logvar, z_q_discr_r
 
 
     def calculate_loss(self, x, beta=1.,  average=False):
@@ -337,25 +335,24 @@ class VAE(Model):
 
         return lower_bound
 
-
-
     def reconstruct_x(self, x):
-        z_q_mean, z_q_logvar, z_q_discr = self.encoder(x)
+        z_q_mean, z_q_logvar, z_q_discr_r = self.encoder(x)
         z_q_cont_r = self.reparameterize (z_q_mean, z_q_logvar)
 
-        z_q_discr_r = self.reparameterize_discrete(
-            z_q_discr,
-            hard=True,
-            tau=self.gumbel_tau,
-        )
-        if self.args.no_recon_oneHot:
-            z_q_discr_r = self.reparameterize_discrete(
-                z_q_discr,
-                hard=False,
-                tau=self.gumbel_tau,
-            )
+        # z_q_discr_r = self.reparameterize_discrete(
+        #     z_q_discr,
+        #     hard=True,
+        #     tau=self.gumbel_tau,
+        # )
+        # if self.args.no_recon_oneHot:
+        #     z_q_discr_r = self.reparameterize_discrete(
+        #         z_q_discr,
+        #         hard=False,
+        #         tau=self.gumbel_tau,
+        #     )
 
-        z_q = torch.cat([z_q_cont_r, z_q_discr_r], 1)
+        # z_q = torch.cat([z_q_cont_r, z_q_discr_r], 1)
+        z_q = z_q_cont_r
 
         x_mean, _ = self.decoder(z_q)
 
@@ -405,7 +402,8 @@ class VAE(Model):
         if self.args.cuda:
             z_sample_rand_cont = z_sample_rand_cont.cuda()
 
-        z_sample_rand = torch.cat([z_sample_rand_cont, z_sample_rand_discr], 1)
+        # z_sample_rand = torch.cat([z_sample_rand_cont, z_sample_rand_discr], 1)
+        z_sample_rand = z_sample_rand_cont
         samples_rand_mean, samples_rand_var = self.decoder(z_sample_rand)
 
         return samples_rand_mean, samples_rand_var, self.prior_means, self.prior_vars
@@ -450,7 +448,8 @@ class VAE(Model):
         if self.args.cuda:
             z_sample_rand_cont = z_sample_rand_cont.cuda()
 
-        z_sample_rand = torch.cat([z_sample_rand_cont, z_sample_rand_discr], 1)
+        # z_sample_rand = torch.cat([z_sample_rand_cont, z_sample_rand_discr], 1)
+        z_sample_rand = z_sample_rand_cont
 
         samples_rand, _ = self.decoder(z_sample_rand)
 
