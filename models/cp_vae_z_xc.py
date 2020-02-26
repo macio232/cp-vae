@@ -30,15 +30,18 @@ class VAE(Model):
         super(VAE, self).__init__(args)
 
         self.klass_2_decoder = args.klass_2_decoder
+        self.klass_2_encoder = args.klass_2_encoder
+
         self.latent_size = self.args.z1_size + self.args.disc_size \
             if self.klass_2_decoder else self.args.z1_size
+
+        self.encoder_size = self.args.hidden_size + self.args.disc_size \
+            if self.klass_2_encoder else self.args.hidden_size
         self.gumbel_hard = self.args.gumbel_hard
         self.gumbel_tau = self.args.gumbel_tau
 
         self.multi_decoder = self.args.multi_decoder
-
-        self.encoder_mean = dict()
-        self.encoder_log_var = dict()
+        self.multi_encoder = self.args.multi_encoder
 
         self.encoder_layers = nn.Sequential(
             GatedDense(np.prod(self.args.input_size), self.args.hidden_size),
@@ -46,13 +49,24 @@ class VAE(Model):
         )
 
         # encoder: q(z, c | x)
-        for i in range(self.args.disc_size):
-            self.encoder_mean[i] = Linear(self.args.hidden_size,
-                                          self.args.z1_size)
-            self.encoder_log_var[i] = NonLinear(self.args.hidden_size,
-                                                self.args.z1_size,
-                                                activation=nn.Hardtanh(
-                                                    min_val=-6., max_val=2.))
+        if self.multi_encoder:
+            self.encoder_mean = dict()
+            self.encoder_log_var = dict()
+            for i in range(self.args.disc_size):
+                self.encoder_mean[i] = Linear(self.encoder_size,
+                                              self.args.z1_size)
+                self.encoder_log_var[i] = NonLinear(self.encoder_size,
+                                                    self.args.z1_size,
+                                                    activation=nn.Hardtanh(
+                                                        min_val=-6., max_val=2.))
+        else:
+            self.encoder_mean = Linear(self.encoder_size,
+                                       self.args.z1_size)
+            self.encoder_log_var = NonLinear(self.encoder_size,
+                                             self.args.z1_size,
+                                             activation=nn.Hardtanh(
+                                                 min_val=-6., max_val=2.))
+
         # self.encoder_discr = Linear(self.args.hidden_size, self.args.disc_size)
         self.encoder_discr = NonLinear(self.args.hidden_size,
                                        self.args.disc_size, activation=nn.ELU())
@@ -139,14 +153,28 @@ class VAE(Model):
             hard=self.gumbel_hard,
             tau=self.gumbel_tau,
         )
-        klasss = torch.max(z_q_discr_r, dim=1)[1]
-        z_q_mean = []
-        z_q_logvar = []
-        for idx, klass in enumerate(klasss):
-            z_q_mean.append(self.encoder_mean[klass.item()](x[idx, :]))
-            z_q_logvar.append(self.encoder_log_var[klass.item()](x[idx, :]))
+        if self.multi_encoder:
+            klasss = torch.max(z_q_discr_r, dim=1)[1]
+            z_q_mean = []
+            z_q_logvar = []
+            for idx, klass in enumerate(klasss):
+                if self.klass_2_encoder:
+                    x_con = torch.cat([x[idx, :], z_q_discr_r[idx, :]], 0)
+                else:
+                    x_con = x[idx, :]
+                z_q_mean.append(self.encoder_mean[klass.item()](x_con))
+                z_q_logvar.append(self.encoder_log_var[klass.item()](x_con))
 
-        return torch.stack(z_q_mean), torch.stack(z_q_logvar), z_q_discr_r
+            return torch.stack(z_q_mean), torch.stack(z_q_logvar), z_q_discr_r
+        else:
+            if self.klass_2_encoder:
+                x_con = torch.cat([x, z_q_discr_r], 1)
+            else:
+                x_con = x
+            z_q_mean = self.encoder_mean(x_con)
+            z_q_logvar = self.encoder_log_var(x_con)
+
+            return z_q_mean, z_q_logvar, z_q_discr_r
 
     # THE MODEL: GENERATIVE DISTRIBUTION DECODER
     def decoder(self, z_con, z_disc):
