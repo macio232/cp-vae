@@ -1,4 +1,5 @@
 from __future__ import print_function
+from collections import defaultdict
 
 import numpy as np
 
@@ -22,6 +23,10 @@ from utils.nn import he_init, GatedDense, NonLinear, CReLU
 from models.Model import Model
 
 
+def torch_stack_mapper(item):
+    return item[0], torch.stack(item[1])
+
+
 # -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
 # =======================================================================================================================
@@ -31,6 +36,8 @@ class VAE(Model):
 
         self.klass_2_decoder = args.klass_2_decoder
         self.klass_2_encoder = args.klass_2_encoder
+
+        self.mapper = torch_stack_mapper
 
         self.latent_size = self.args.z1_size + self.args.disc_size \
             if self.klass_2_decoder else self.args.z1_size
@@ -52,7 +59,9 @@ class VAE(Model):
         if self.multi_encoder:
             self.encoder_mean = dict()
             self.encoder_log_var = dict()
+            self.curvature = dict()
             for i in range(self.args.disc_size):
+                self.curvature[i] = 'euclidean'
                 self.encoder_mean[i] = Linear(self.encoder_size,
                                               self.args.z1_size)
                 self.encoder_log_var[i] = NonLinear(self.encoder_size,
@@ -155,17 +164,18 @@ class VAE(Model):
         )
         if self.multi_encoder:
             klasss = torch.max(z_q_discr_r, dim=1)[1]
-            z_q_mean = []
-            z_q_logvar = []
+            z_q_mean = defaultdict(list)
+            z_q_logvar = defaultdict(list)
+            order = defaultdict(list)
             for idx, klass in enumerate(klasss):
                 if self.klass_2_encoder:
                     x_con = torch.cat([x[idx, :], z_q_discr_r[idx, :]], 0)
                 else:
                     x_con = x[idx, :]
-                z_q_mean.append(self.encoder_mean[klass.item()](x_con))
-                z_q_logvar.append(self.encoder_log_var[klass.item()](x_con))
-
-            return torch.stack(z_q_mean), torch.stack(z_q_logvar), z_q_discr_r
+                z_q_mean[klass.item()].append(self.encoder_mean[klass.item()](x_con))
+                z_q_logvar[klass.item()].append(self.encoder_log_var[klass.item()](x_con))
+                order[klass.item()].append(idx)
+            return dict(map(self.mapper, z_q_mean.items())), dict(map(self.mapper, z_q_logvar.items())), z_q_discr_r, order
         else:
             if self.klass_2_encoder:
                 x_con = torch.cat([x, z_q_discr_r], 1)
@@ -222,13 +232,13 @@ class VAE(Model):
 
         '''
 
-        z_q_mean, z_q_logvar, z_q_discr_r = self.encoder(x)
-        z_q_cont_r = self.reparameterize(z_q_mean, z_q_logvar)
+        z_q_mean, z_q_logvar, z_q_discr_r, samples_order = self.encoder(x)
+        z_q_cont_r = self.reparameterize(z_q_mean, z_q_logvar, samples_order, self)
         z_q = torch.cat([z_q_cont_r, z_q_discr_r], 1) \
             if self.klass_2_decoder else z_q_cont_r
         x_mean, x_logvar = self.decoder(z_q_cont_r, z_q_discr_r)
 
-        return x_mean, x_logvar, z_q, z_q_cont_r, z_q_discr_r, z_q_mean, z_q_logvar, z_q_discr_r
+        return x_mean, x_logvar, z_q, z_q_cont_r, z_q_discr_r, z_q_mean, z_q_logvar, z_q_discr_r, samples_order
 
     def calculate_loss(self, x, beta=1., average=False):
         '''
@@ -243,7 +253,7 @@ class VAE(Model):
         '''
 
         # pass through VAE
-        x_mean, x_logvar, z_q, z_q_cont_r, z_q_discr_r, z_q_mean, z_q_logvar, z_q_discr = self.forward(
+        x_mean, x_logvar, z_q, z_q_cont_r, z_q_discr_r, z_q_mean, z_q_logvar, z_q_discr, samples_order = self.forward(
             x)
 
         # RE / A term
@@ -271,15 +281,27 @@ class VAE(Model):
 
             q_c_x = F.softmax(z_q_discr, dim=-1)
 
-            for i in range(disc_size):
+            # for i in range(disc_size):
+            for i in samples_order.keys():
                 # KL_cont += z_q_discr_r[:,i] * self.KL_continuous (z_q_mean, z_q_logvar, self.prior_means[i,:], self.prior_vars[i,:], dim=-1)
-                KL_cont += q_c_x[:, i] * self.KL_continuous(z_q_mean,
-                                                            z_q_logvar,
+                # if len(samples_order.keys()) != 10:
+                #     import ipdb; ipdb.set_trace()
+                KL_i = torch.zeros(q_c_x.shape[0])
+                KL_i[samples_order[i]] = q_c_x[samples_order[i], i] * self.KL_continuous(z_q_mean[i],
+                                                            z_q_logvar[i],
                                                             self.prior_means[i,
                                                             :],
                                                             self.softplus(
                                                                 self.prior_vars[
                                                                 i, :]), dim=-1)
+                KL_cont += KL_i
+                # KL_cont += q_c_x[:, i] * self.KL_continuous(z_q_mean[i],
+                #                                             z_q_logvar[i],
+                #                                             self.prior_means[i,
+                #                                             :],
+                #                                             self.softplus(
+                #                                                 self.prior_vars[
+                #                                                 i, :]), dim=-1)
 
 
         else:
@@ -430,8 +452,8 @@ class VAE(Model):
         return lower_bound
 
     def reconstruct_x(self, x):
-        z_q_mean, z_q_logvar, z_q_discr_r = self.encoder(x)
-        z_q_cont_r = self.reparameterize(z_q_mean, z_q_logvar)
+        z_q_mean, z_q_logvar, z_q_discr_r, samples_order = self.encoder(x)
+        z_q_cont_r = self.reparameterize(z_q_mean, z_q_logvar, samples_order, self)
 
         # z_q_discr_r = self.reparameterize_discrete(
         #     z_q_discr,

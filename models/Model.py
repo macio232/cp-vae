@@ -21,14 +21,15 @@ class Model(nn.Module):
     # AUXILIARY METHODS
 
 
-    def reparameterize(self, mu, logvar):
-        std = logvar.mul(0.5).exp_()
-        if self.args.cuda:
-            eps = torch.cuda.FloatTensor(std.size()).normal_()
-        else:
-            eps = torch.FloatTensor(std.size()).normal_()
-        eps = Variable(eps)
-        return eps.mul(std).add_(mu)
+    def reparameterize(self, mu, logvar, order, model):
+        output = dict()
+        for klass, values in mu.items():
+            if model.curvature[klass] == 'euclidean':
+                z_var = logvar[klass].mul(0.5).exp_()
+                q_z = torch.distributions.normal.Normal(values, z_var).rsample()
+                for klass_idx, org_idx in enumerate(order[klass]):
+                    output[org_idx] = q_z[klass_idx, :]
+        return torch.stack([output[i] for i in range(len(output))])
 
     def reparameterize_discrete(self, logits, hard=False, *args, **kwargs):
         """
