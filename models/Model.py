@@ -29,6 +29,8 @@ class Model(nn.Module):
                 q_z = torch.distributions.normal.Normal(values, z_var).rsample()
                 for klass_idx, org_idx in enumerate(order[klass]):
                     output[org_idx] = q_z[klass_idx, :]
+            else:
+                raise NotImplementedError
         return torch.stack([output[i] for i in range(len(output))])
 
     def reparameterize_discrete(self, logits, hard=False, *args, **kwargs):
