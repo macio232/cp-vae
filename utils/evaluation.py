@@ -102,7 +102,7 @@ def evaluate_vae(args, model, train_loader, data_loader, epoch, dir, mode):
         if args.prior == 'conditional' :
 
             # marginal categorical posterior
-            z_q_mean, z_q_logvar, z_q_discr_r = model.encoder(full_data)
+            z_q_mean, z_q_logvar, z_q_discr_r, sample_order = model.encoder(full_data)
             q_c_x = F.softmax (z_q_discr_r, dim=-1)
             average_q_c_x = torch.mean( q_c_x, dim=0)
 
@@ -188,9 +188,15 @@ def evaluate_vae(args, model, train_loader, data_loader, epoch, dir, mode):
                 visualize_latent (vis_x, vis_y, test_target,
                                   dir + 'figures/' + '/latent_' + args.model_name + '_' + 'c_' + str (args.disc_size))
 
-
             elif args.prior == 'conditional':
-                z_mean_recon, z_logvar_recon, z_q_discr_r = model.encoder(test_data)
+                def aggregate_klasses(z, order):
+                    output = dict()
+                    for klass, values in z.items():
+                        for klass_idx, org_idx in enumerate(order[klass]):
+                            output[org_idx] = values[klass_idx, :]
+                    return torch.stack([output[i] for i in range(len(output))])
+                z_mean_recon, z_logvar_recon, z_q_discr_r, sample_order = model.encoder(test_data)
+                z_mean_recon = aggregate_klasses(z_mean_recon, sample_order)
                 vis_data = TSNE(n_components=2).fit_transform(z_mean_recon.data.cpu().numpy().astype('float64'))
                 vis_x = vis_data[:, 0]
                 vis_y = vis_data[:, 1]
