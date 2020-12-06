@@ -1,11 +1,11 @@
 #!/bin/bash
 
 VENV_PATH="${VENV_PATH:-$(realpath "$HOME")/venvs}"
-VENV_NAME="${VENV_NAME:-cp_vae}"
+VENV_NAME="${VENV_NAME:-cpvae}"
 
 if [ ! -d "${VENV_PATH}/${VENV_NAME}" ]; then
   echo "Creating virtualenv"
-  python3 -m venv "${VENV_PATH}/${VENV_NAME}"
+  python3.7 -m venv "${VENV_PATH}/${VENV_NAME}"
 fi
 
 source "${VENV_PATH}/${VENV_NAME}/bin/activate"
