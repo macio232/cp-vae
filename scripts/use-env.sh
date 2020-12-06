@@ -1,7 +1,7 @@
 #!/bin/bash
 
 VENV_PATH="${VENV_PATH:-$(realpath "$HOME")/venvs}"
-VENV_NAME="${VENV_NAME:-cp_vae}"
+VENV_NAME="${VENV_NAME:-cpvae}"
 
 if [ ! -d "${VENV_PATH}/${VENV_NAME}" ]; then
   echo "Creating virtualenv"
